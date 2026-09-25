@@ -4350,12 +4350,34 @@ generateSystemPromptAddition() {
         );
     }
 
-    /** 把材料判定插到「### 四、物品」节末尾（锚点：「临时借用不等于归属转移。」） */
+    /** 把材料判定 + 物品归属判定插到「### 四、物品」节末尾（锚点：「临时借用不等于归属转移。」） */
     _injectMaterialGuard(text) {
         if (!text) return text;
         const anchor = '临时借用不等于归属转移。';
         if (!text.includes(anchor)) return text;
-        return text.replace(anchor, anchor + '\n★ ' + this._getMaterialGuardText());
+        const guards = this._getMaterialGuardText() + '\n★ ' + this._getHolderGuardText();
+        return text.replace(anchor, anchor + '\n★ ' + guards);
+    }
+
+    /** 物品归属判定 —— 防止 AI 把"看见但没买"的物品写成玩家持有 */
+    _getHolderGuardText() {
+        const lang = this._getAiOutputLang();
+        const tr = (zh, tw, en, ja, ko, ru) => {
+            if (lang === 'zh-CN') return zh;
+            if (lang === 'zh-TW') return tw;
+            if (lang === 'ja') return ja;
+            if (lang === 'ko') return ko;
+            if (lang === 'ru') return ru;
+            return en;
+        };
+        return tr(
+            '【物品归属】未购买的商店/他人物品，holder 写商店名或店主名，不得写玩家名；只有实际支付或取得后才能写玩家名。仅"看到/货架上摆着"不构成持有。',
+            '【物品歸屬】未購買的商店/他人商品，holder 寫商店名或店主名，不得寫玩家名；只有實際支付或取得後才能寫玩家名。僅"看到/貨架上擺著"不構成持有。',
+            '[Item Ownership] For shop/others goods not yet purchased, holder MUST be the shop or shopkeeper name, NOT the player. Write the player as holder only after actual payment or acquisition. Merely "seeing / on the shelf" does NOT constitute ownership.',
+            '【物品所有】未購入の商店/他人の商品は、holder に商店名または店主名を書き、玩家名を書かないこと。実際に支払った/取得した後にのみ玩家名を書く。"見た/棚にある"だけでは所有にならない。',
+            '【아이템 소유】미구매 상점/타인 상품의 holder는 상점명 또는 주인 이름을 쓰고, 플레이어 이름을 쓰지 말 것. 실제 결제 또는 획득 후에만 플레이어 이름을 쓴다. 단순히 "봤다/선반에 있다"는 소유가 아니다.',
+            '[Владение] Для непроданных товаров магазина/других holder — название магазина или имя владельца, НЕ имя игрока. Имя игрока только после оплаты/получения. Просто "увидел / на полке" не является владением.',
+        );
     }
 
     generateMoodPrompt() {
