@@ -2345,13 +2345,13 @@ if (sendCharacters) {
 
         // 通用：检测行是否为无owner的userOnly格式（首段含=即正常格式，否则可能是UO格式）
         // 属性条: 正常 key:owner=cur/max 或 userOnly key:cur/max(显示名)
-        const barNormal = line.match(/^([a-zA-Z]\w*):(.+?)=(\d+)(?:\s*\/\s*(\d+))?(?:\((.+?)\))?$/i);
-        const barUo = _uoB ? line.match(/^([a-zA-Z]\w*):(\d+)(?:\s*\/\s*(\d+))?(?:\((.+?)\))?$/i) : null;
+        const barNormal = line.match(/^([a-zA-Z]\w*):(.+?)=(\d+)\s*\/\s*(\d+)(?:\((.+?)\))?$/i);
+        const barUo = _uoB ? line.match(/^([a-zA-Z]\w*):(\d+)\s*\/\s*(\d+)(?:\((.+?)\))?$/i) : null;
         if (barNormal && !/^(status|skill)$/i.test(barNormal[1])) {
             const type = barNormal[1].toLowerCase();
             const owner = _uoB ? _uoName : barNormal[2].trim();
             const current = parseInt(barNormal[3]);
-            const max = barNormal[4] ? parseInt(barNormal[4]) : null;
+            const max = parseInt(barNormal[4]);
             const label = barNormal[5]?.trim() || null;
             if (!rpg.bars[owner]) rpg.bars[owner] = {};
             rpg.bars[owner][type] = label ? [current, max, label] : [current, max];
@@ -2360,7 +2360,7 @@ if (sendCharacters) {
         if (barUo && !/^(status|skill)$/i.test(barUo[1])) {
             const type = barUo[1].toLowerCase();
             const current = parseInt(barUo[2]);
-            const max = barUo[3] ? parseInt(barUo[3]) : null;
+            const max = parseInt(barUo[3]);
             const label = barUo[4]?.trim() || null;
             if (!rpg.bars[_uoName]) rpg.bars[_uoName] = {};
             rpg.bars[_uoName][type] = label ? [current, max, label] : [current, max];
@@ -2483,24 +2483,20 @@ if (sendCharacters) {
         if (line.startsWith('xp:')) {
             const str = line.substring(3).trim();
             if (_uoL) {
-                const m = str.match(/^(\d+)(?:\s*\/\s*(\d+))?$/);
+                const m = str.match(/^(\d+)\s*\/\s*(\d+)$/);
                 if (m) {
                     if (!rpg.xp) rpg.xp = {};
-                    const cur = parseInt(m[1]);
-                    const max = m[2] ? parseInt(m[2]) : null;
-                    rpg.xp[_uoName] = [cur, max];
+                    rpg.xp[_uoName] = [parseInt(m[1]), parseInt(m[2])];
                 }
             } else {
                 const eq = str.indexOf('=');
                 if (eq > 0) {
                     const owner = str.substring(0, eq).trim();
                     const valStr = str.substring(eq + 1).trim();
-                    const m = valStr.match(/^(\d+)(?:\s*\/\s*(\d+))?$/);
+                    const m = valStr.match(/^(\d+)\s*\/\s*(\d+)$/);
                     if (m) {
                         if (!rpg.xp) rpg.xp = {};
-                        const cur = parseInt(m[1]);
-                        const max = m[2] ? parseInt(m[2]) : null;
-                        rpg.xp[owner] = [cur, max];
+                        rpg.xp[owner] = [parseInt(m[1]), parseInt(m[2])];
                     }
                 }
             }
@@ -4652,7 +4648,7 @@ generateSystemPromptAddition() {
                 );
                 for (const bar of barCfg) {
                     p += L(
-                        `  ✅ ${bar.key}:当前值(${bar.name})  ← 只写当前值，系统自动算上限\n`,
+                        `  ✅ ${bar.key}:当前/最大(${bar.name})  ← 首次必须标注显示名\n`,
                         `  ✅ ${bar.key}:current/max(${bar.name})  ← must label display name on first use\n`,
                         `  ✅ ${bar.key}:現在値/最大値(${bar.name})  ← 初回は表示名を必ず記載\n`,
                         `  ✅ ${bar.key}:현재/최대(${bar.name})  ← 첫 사용 시 표시 이름 필수\n`,
@@ -4676,7 +4672,7 @@ generateSystemPromptAddition() {
                 );
                 for (const bar of barCfg) {
                     p += L(
-                        `  ✅ ${bar.key}:归属=当前值(${bar.name})  ← 只写当前值，系统自动算上限\n`,
+                        `  ✅ ${bar.key}:归属=当前/最大(${bar.name})  ← 首次必须标注显示名\n`,
                         `  ✅ ${bar.key}:${own}=current/max(${bar.name})  ← must label display name on first use\n`,
                         `  ✅ ${bar.key}:${own}=現在値/最大値(${bar.name})  ← 初回は表示名を必ず記載\n`,
                         `  ✅ ${bar.key}:${own}=현재/최대(${bar.name})  ← 첫 사용 시 표시 이름 필수\n`,
@@ -4892,7 +4888,7 @@ generateSystemPromptAddition() {
             );
             if (uoLvl) {
                 p += L(
-                    `  level:境界序号（1=炼气初，4=炼气圆，5=筑基初，40=登仙圆）\n  xp:当前修为值（只写当前值）\n`,
+                    `  level:等级数值\n  xp:当前经验/升级所需\n`,
                     `  level:level number\n  xp:current XP/needed for level-up\n`,
                     `  level:レベル数値\n  xp:現在の経験値/レベルアップに必要な値\n`,
                     `  level:레벨 수치\n  xp:현재 경험치/레벨업 필요치\n`,
@@ -4900,7 +4896,7 @@ generateSystemPromptAddition() {
                 );
             } else {
                 p += L(
-                    `  level:归属=境界序号（1=炼气初，4=炼气圆，5=筑基初，40=登仙圆）\n  xp:归属=当前修为值（只写当前值）\n`,
+                    `  level:归属=等级数值\n  xp:归属=当前经验/升级所需\n`,
                     `  level:${own}=level number\n  xp:${own}=current XP/needed for level-up\n`,
                     `  level:${own}=レベル数値\n  xp:${own}=現在の経験値/レベルアップに必要な値\n`,
                     `  level:${own}=레벨 수치\n  xp:${own}=현재 경험치/레벨업 필요치\n`,
@@ -5299,77 +5295,6 @@ generateSystemPromptAddition() {
 
         return hasAnyData ? result : null;
     }
-}
-
-// ============================================
-// RPG 修仙数值公式（前端接管上限）
-// ============================================
-
-export const RPG_REALM_NAMES = ['炼气', '筑基', '结晶', '金丹', '具灵', '元婴', '化神', '悟道', '羽化', '登仙'];
-export const RPG_STAGE_NAMES = ['初期', '中期', '后期', '圆满'];
-export const RPG_SP_STAGE_NAMES = ['蒙昧', '清明', '出窍', '照幽', '通神', '大观'];
-
-export const RPG_XP_MAX = [
-    [15, 40, 70, 100],
-    [45, 120, 210, 300],
-    [150, 400, 700, 1000],
-    [600, 1600, 2800, 4000],
-    [3000, 8000, 14000, 20000],
-    [15000, 40000, 70000, 100000],
-    [90000, 240000, 420000, 600000],
-    [600000, 1600000, 2800000, 4000000],
-    [4500000, 12000000, 21000000, 30000000],
-    [45000000, 120000000, 210000000, 300000000],
-];
-
-export const RPG_HP_BASE = [120, 250, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000];
-export const RPG_MP_BASE = [30, 100, 300, 800, 2000, 6000, 18000, 50000, 150000, 500000];
-export const RPG_HP_STAGE_MULT = [0.8, 0.9, 0.95, 1.0];
-export const RPG_MP_STAGE_MULT = [0.6, 0.75, 0.9, 1.0];
-export const RPG_SP_BASE = [30, 100, 300, 800, 2000, 5000];
-
-function _lvParts(levelNum) {
-    const lv = Math.max(1, Math.min(40, parseInt(levelNum) || 1));
-    return { realmIdx: Math.floor((lv - 1) / 4), stageIdx: (lv - 1) % 4 };
-}
-
-export function calcRealmName(levelNum) {
-    const { realmIdx, stageIdx } = _lvParts(levelNum);
-    return RPG_REALM_NAMES[realmIdx] + RPG_STAGE_NAMES[stageIdx];
-}
-
-export function calcXpMax(levelNum) {
-    const { realmIdx, stageIdx } = _lvParts(levelNum);
-    return RPG_XP_MAX[realmIdx][stageIdx];
-}
-
-export function calcHpMax(levelNum, xingling, hpBonus) {
-    const { realmIdx, stageIdx } = _lvParts(levelNum);
-    const xl = parseInt(xingling) || 0;
-    const hb = parseInt(hpBonus) || 0;
-    return Math.round(RPG_HP_BASE[realmIdx] * RPG_HP_STAGE_MULT[stageIdx] + xl * 2 + hb);
-}
-
-export function calcMpMax(levelNum, linggenCoef, mpBonus) {
-    const { realmIdx, stageIdx } = _lvParts(levelNum);
-    const coef = parseFloat(linggenCoef) || 1.0;
-    const mb = parseInt(mpBonus) || 0;
-    return Math.round(RPG_MP_BASE[realmIdx] * RPG_MP_STAGE_MULT[stageIdx] * coef + mb);
-}
-
-export function calcSpMax(shenshiStage, wuxing, spBonus) {
-    const stageIdx = Math.max(0, Math.min(5, parseInt(shenshiStage) || 0));
-    const wx = parseInt(wuxing) || 0;
-    const sb = parseInt(spBonus) || 0;
-    return Math.round(RPG_SP_BASE[stageIdx] + wx * 1.5 + sb);
-}
-
-export function parseShenshiStage(text) {
-    const s = String(text || '');
-    for (let i = 0; i < RPG_SP_STAGE_NAMES.length; i++) {
-        if (s.includes(RPG_SP_STAGE_NAMES[i])) return i;
-    }
-    return 0;
 }
 
 // 导出单例
