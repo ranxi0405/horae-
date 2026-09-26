@@ -10,7 +10,7 @@ import { renderExtensionTemplateAsync, getContext, extension_settings } from '/s
 import { getSlideToggleOptions, saveSettingsDebounced, eventSource, event_types, doNewChat } from '/script.js';
 import { slideToggle } from '/lib.js';
 
-import { horaeManager, createEmptyMeta, getItemBaseName } from './core/horaeManager.js';
+import { horaeManager, createEmptyMeta, getItemBaseName, calcRealmName, calcXpMax, calcHpMax, calcMpMax, calcSpMax } from './core/horaeManager.js';
 import { vectorManager } from './core/vectorManager.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
 import { t, tForLang, initI18n, getLanguage, isZhLocale, setLanguage, detectEffectiveAiLangIsZh, detectEffectiveAiLang } from './core/i18n.js';
@@ -395,29 +395,26 @@ async function getTemplate(name) {
 }
 
 function _getDefaultRpgAttrConfig() {
-    const lang = detectEffectiveAiLang(settings);
-    const attrKeys = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
-    return attrKeys.map(key => ({
-        key,
-        name: tForLang(lang, `rpgDefaults.attributes.${key}.name`),
-        desc: tForLang(lang, `rpgDefaults.attributes.${key}.desc`),
-    }));
+    return [
+        { key: 'zizhi', name: '资质', desc: '修炼天赋，影响吸纳灵气的效率' },
+        { key: 'wuxing', name: '悟性', desc: '参悟天地至理、功法奥义的能力' },
+        { key: 'shenling', name: '身灵', desc: '肉身与灵力的契合程度，影响移动速度与突破掌控' },
+        { key: 'daoxin', name: '道心', desc: '心境修为、意志坚定程度，影响心魔抗性' },
+        { key: 'xianyuan', name: '仙缘', desc: '与天地气运的亲和程度，影响机缘遇见' },
+    ];
 }
 
 function _getDefaultRpgBarConfig() {
-    const lang = detectEffectiveAiLang(settings);
     return [
-        { key: 'hp', color: '#22c55e' },
-        { key: 'mp', color: '#6366f1' },
-        { key: 'sp', color: '#f59e0b' },
+        { key: 'hp', color: '#c0392b', name: '气血', desc: '生命值；受伤、中毒、治疗、休息会改变' },
+        { key: 'mp', color: '#2980b9', name: '灵力', desc: '法术消耗；施法、修炼、丹药会改变' },
+        { key: 'sp', color: '#8e44ad', name: '神识', desc: '精神力；探查、御物、神识攻击会改变' },
     ].map(bar => ({
         ...bar,
-        name: tForLang(lang, `rpgDefaults.bars.${bar.key}.name`),
         min: 0,
-        max: 9999,
+        max: 999999999,
         defaultMax: 100,
         required: true,
-        desc: tForLang(lang, `rpgDefaults.bars.${bar.key}.desc`),
     }));
 }
 
@@ -7738,7 +7735,12 @@ function updateRpgDisplay() {
                 // 角色名行: 名称 + 等级 + 状态图标 ...... 货币（右端）
                 barsHtml += '<div class="horae-rpg-bar-card-header">';
                 barsHtml += `<span class="horae-rpg-char-name">${escapeHtml(name)}</span>`;
-                if (sendLvl && charLv != null && (!settings.rpgLevelUserOnly || _isUser)) barsHtml += `<span class="horae-rpg-lv-badge">Lv.${charLv}</span>`;
+                if (sendLvl && charLv != null && (!settings.rpgLevelUserOnly || _isUser)) {
+                    const _rn = calcRealmName(charLv);
+                    const _xc = rpg.xp?.[name]?.[0] ?? 0;
+                    const _xm = calcXpMax(charLv);
+                    barsHtml += `<span class="horae-rpg-lv-badge">${_rn}（${_xc}/${_xm}）</span>`;
+                }
                 for (const e of effects) {
                     barsHtml += `<i class="fa-solid ${getStatusIcon(e)} horae-rpg-hud-effect" title="${escapeHtml(e)}"></i>`;
                 }
@@ -7753,16 +7755,12 @@ function updateRpgDisplay() {
                 }
                 if (curRightHtml) barsHtml += `<span class="horae-rpg-bar-card-right">${curRightHtml}</span>`;
                 barsHtml += '</div>';
-                // XP 条
-                const charXpTop = rpg.xp?.[name];
-                if (sendLvl && (!settings.rpgLevelUserOnly || _isUser) && charXpTop && charXpTop[1] > 0) {
-                    const xpPct = Math.min(100, Math.round(charXpTop[0] / charXpTop[1] * 100));
-                    barsHtml += `<div class="horae-rpg-bar"><span class="horae-rpg-bar-label">XP</span><div class="horae-rpg-bar-track"><div class="horae-rpg-bar-fill" style="width:${xpPct}%;background:#a78bfa;"></div></div><span class="horae-rpg-bar-val">${charXpTop[0]}/${charXpTop[1]}</span></div>`;
-                }
+                // XP 已合并到 Lv 徽章
                 if (bars) {
                     for (const [type, val] of Object.entries(bars)) {
                         const label = getRpgBarName(type, val[2]);
-                        const cur = val[0], max = val[1];
+                        const cur = val[0];
+                        const max = _resolveBarMax(name, type, val[1], rpg);
                         const pct = max > 0 ? Math.min(100, Math.round(cur / max * 100)) : 0;
                         const color = getRpgBarColor(type);
                         barsHtml += `<div class="horae-rpg-bar"><span class="horae-rpg-bar-label">${escapeHtml(label)}</span><div class="horae-rpg-bar-track"><div class="horae-rpg-bar-fill" style="width:${pct}%;background:${color};"></div></div><span class="horae-rpg-bar-val">${cur}/${max}</span></div>`;
@@ -7779,7 +7777,12 @@ function updateRpgDisplay() {
             const tabContent = _buildCharTabs(name);
             if (tabContent) {
                 barsHtml += `<details class="horae-rpg-char-detail"><summary class="horae-rpg-char-summary"><span class="horae-rpg-char-detail-name">${escapeHtml(name)}</span>`;
-                if (sendLvl && (!settings.rpgLevelUserOnly || _isUser) && rpg.levels?.[name] != null) barsHtml += `<span class="horae-rpg-lv-badge">Lv.${rpg.levels[name]}</span>`;
+                if (sendLvl && (!settings.rpgLevelUserOnly || _isUser) && rpg.levels?.[name] != null) {
+                    const _rn2 = calcRealmName(rpg.levels[name]);
+                    const _xc2 = rpg.xp?.[name]?.[0] ?? 0;
+                    const _xm2 = calcXpMax(rpg.levels[name]);
+                    barsHtml += `<span class="horae-rpg-lv-badge">${_rn2}（${_xc2}/${_xm2}）</span>`;
+                }
                 if (profession) barsHtml += `<span class="horae-rpg-char-prof">${escapeHtml(profession)}</span>`;
                 barsHtml += `</summary><div class="horae-rpg-char-detail-body">${tabContent}</div></details>`;
             }
@@ -7810,7 +7813,8 @@ function updateRpgDisplay() {
             let h = `<div class="horae-rpg-char-card"><div class="horae-rpg-char-name">${escapeHtml(name)}</div>`;
             for (const [type, val] of Object.entries(bars)) {
                 const label = getRpgBarName(type, val[2]);
-                const cur = val[0], max = val[1];
+                const cur = val[0];
+                const max = _resolveBarMax(name, type, val[1], rpg);
                 const pct = max > 0 ? Math.min(100, Math.round(cur / max * 100)) : 0;
                 const color = getRpgBarColor(type);
                 h += `<div class="horae-rpg-bar"><span class="horae-rpg-bar-label">${escapeHtml(label)}</span><div class="horae-rpg-bar-track"><div class="horae-rpg-bar-fill" style="width:${pct}%;background:${color};"></div></div><span class="horae-rpg-bar-val">${cur}/${max}</span></div>`;
@@ -9570,6 +9574,17 @@ function _renderEditableVal(cur, max, kindCur, kindMax, key) {
  * 布局: 角色名(+Lv+极简状态徽章+货币) | XP条 | 属性条 | 详情chip(仅 .expanded 时显示)
  * 编辑入口：所有数值文本旁同时渲染 input（默认 hidden，由 .horae-rpg-hud.editing 接管）
  */
+function _resolveBarMax(owner, barKey, aiMax, rpg) {
+    const lv = (rpg?.levels?.[owner]) ?? 1;
+    const attrs = rpg?.attributes?.[owner] || {};
+    const bonuses = rpg?.bonus?.[owner] || {};
+    const key = String(barKey || '').toLowerCase();
+    if (key === 'hp') return calcHpMax(lv, attrs.shenling, bonuses.hp);
+    if (key === 'mp') return calcMpMax(lv, 1.0, bonuses.mp);
+    if (key === 'sp') return calcSpMax(0, attrs.wuxing, bonuses.sp);
+    return aiMax || 100;
+}
+
 function _buildCharHudHtml(name, rpg) {
     const bars = rpg.bars[name] || {};
     const effects = rpg.status?.[name] || [];
@@ -9589,9 +9604,12 @@ function _buildCharHudHtml(name, rpg) {
     html += '<div class="horae-rpg-hud-header">';
     html += `<span class="horae-rpg-hud-name">${escapeHtml(name)}</span>`;
     if (sendLvl && charLv != null) {
+        const _realmName = calcRealmName(charLv);
+        const _xpCur = charXp ? charXp[0] : 0;
+        const _xpMax = calcXpMax(charLv);
         html += `<span class="horae-rpg-hud-lv-badge">`
-            + `<span class="horae-rpg-hud-lv-display">Lv.${charLv}</span>`
-            + `<input class="horae-rpg-hud-edit-input horae-rpg-hud-lv-input" type="number" inputmode="numeric" min="0" data-edit-kind="level" value="${charLv}">`
+            + `<span class="horae-rpg-hud-lv-display">${_realmName}（${_xpCur}/${_xpMax}）</span>`
+            + `<input class="horae-rpg-hud-edit-input horae-rpg-hud-lv-input" type="number" inputmode="numeric" min="1" max="40" data-edit-kind="level" value="${charLv}">`
             + `</span>`;
     }
     if (mostSevere) {
@@ -9614,18 +9632,12 @@ function _buildCharHudHtml(name, rpg) {
     }
     html += '</div>';
 
-    if (sendLvl && charXp && charXp[1] > 0) {
-        const pct = Math.min(100, Math.round(charXp[0] / charXp[1] * 100));
-        html += `<div class="horae-rpg-hud-bar horae-rpg-hud-xp">`
-            + `<span class="horae-rpg-hud-lbl">XP</span>`
-            + `<div class="horae-rpg-hud-track"><div class="horae-rpg-hud-fill" style="width:${pct}%;background:#a78bfa;"></div></div>`
-            + _renderEditableVal(charXp[0], charXp[1], 'xp-cur', 'xp-max', '')
-            + `</div>`;
-    }
+    // XP 已合并到 Lv 徽章里显示
 
     for (const [type, val] of Object.entries(bars)) {
         const label = getRpgBarName(type, val[2]);
-        const cur = val[0], max = val[1];
+        const cur = val[0];
+        const max = _resolveBarMax(name, type, val[1], rpg);
         const pct = max > 0 ? Math.min(100, Math.round(cur / max * 100)) : 0;
         const color = getRpgBarColor(type);
         html += `<div class="horae-rpg-hud-bar">`
